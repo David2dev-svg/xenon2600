@@ -2,7 +2,7 @@
 
 An Atari 2600 emulator running natively on the Xbox 360 — bare-metal, via [libxenon](https://github.com/Free60Project/libxenon), with no dashboard or Linux involved.
 
-The emulation core is [`stella2014-libretro`](https://github.com/libretro/stella2014-libretro) (a lean libretro-packaged build of [Stella](https://stella-emu.github.io/)). This project is the *frontend*: the layer that wires that core up to real Xbox 360 hardware (video, audio, controller input, and ROM loading from USB), with no RetroArch and no OS — a single `.elf32` binary loaded directly by XeLL.
+The emulation core is [`stella2014-libretro`](https://github.com/libretro/stella2014-libretro) (a lean libretro-packaged build of [Stella](https://stella-emu.github.io/)). This project is the *frontend*: the layer that wires that core up to real Xbox 360 hardware (video, audio, controller input, and ROM loading from USB), with no RetroArch and no OS — a single `.elf32` binary loaded directly by XeLL or Aurora.
 
 > **Status: alpha (`v0.1.0-alpha`)** — functional, with one known audio limitation. See [Known issues](#known-issues--todo).
 
