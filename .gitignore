@@ -1,0 +1,12 @@
+# Build artifacts
+build/
+*.o
+*.elf
+*.elf32
+*.map
+
+# Core externo (clonado separadamente, ver README)
+core/stella2014-libretro/
+
+# Sobras de patches
+*.bak
