@@ -8,7 +8,7 @@ The emulation core is [`stella2014-libretro`](https://github.com/libretro/stella
 
 ## What works
 
-- ✅ **Video** — the core's framebuffer (RGB565) scaled 2x via `SDL_SoftStretch`, fullscreen 720p
+- ✅ **Video** — the core's framebuffer (RGB565) scaled 3x via `SDL_SoftStretch`, fullscreen 720p
 - ✅ **Controller** — Xbox 360 USB controller mapped to the libretro input API
 - ✅ **ROM loading** — reads `rom.a26` from the root of the first detected USB device (via `libfat`)
 - ✅ **Audio** — resampled from the core's fixed 31400Hz to the hardware's fixed 48000Hz, processed on a dedicated secondary hardware thread (see [Audio architecture](#audio-architecture))
