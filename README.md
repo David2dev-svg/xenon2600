@@ -1,110 +1,103 @@
-# xenon2600
+# Xenon2600
 
-An Atari 2600 emulator running natively on the Xbox 360 — bare-metal, via [libxenon](https://github.com/Free60Project/libxenon), with no dashboard or Linux involved.
+Port do core libretro `stella2014-libretro` (Atari 2600) pra Xbox 360,
+rodando bare-metal via libxenon.
 
-The emulation core is [`stella2014-libretro`](https://github.com/libretro/stella2014-libretro) (a lean libretro-packaged build of [Stella](https://stella-emu.github.io/)). This project is the *frontend*: the layer that wires that core up to real Xbox 360 hardware (video, audio, controller input, and ROM loading from USB), with no RetroArch and no OS — a single `.elf32` binary loaded directly by XeLL.
-
-> **Status: alpha (`v0.2.0-alpha`)** — video, audio, controller input, and ROM loading are all working.
-
-## What works
-
-- ✅ **Video** — the core's framebuffer (RGB565) scaled 2x via `SDL_SoftStretch`, fullscreen 720p
-- ✅ **Controller** — Xbox 360 USB controller mapped to the libretro input API
-- ✅ **ROM loading** — reads `rom.a26` from the root of the first detected USB device (via `libfat`)
-- ✅ **Audio** — resampled from the core's fixed 31400Hz to the hardware's fixed 48000Hz, processed on a dedicated secondary hardware thread (see [Audio architecture](#audio-architecture))
-
-## Architecture
+## Estrutura
 
 ```
 xenon2600/
-├── src/                  # frontend: the glue between libxenon and the core
-│   ├── main.c            # entry point, main loop
-│   ├── libretro_shim.c   # implements the callbacks required by the libretro API
-│   ├── xenon_video.c     # SDL 1.2 (xenos + SDL_SoftStretch)
-│   ├── xenon_audio.c     # resampling + xenon_sound_submit, on its own thread
-│   ├── xenon_input.c     # get_controller_data (libxenon input driver)
-│   └── rom_loader.c      # fatInitDefault + bdev_enum + fopen
-├── core/
-│   └── stella2014-libretro/   # separate clone (not vendored, see Build)
-└── Makefile
+├── check-toolchain.sh   # rode isso PRIMEIRO, antes de qualquer build
+├── Makefile
+├── src/                 # nosso "frontend" — a cola entre libxenon e o core
+│   ├── main.c           # entry point: registra callbacks, carrega a ROM, loop principal
+│   ├── libretro_shim.c/.h   # implementa as callbacks exigidas pela API libretro
+│   ├── xenon_video.c/.h     # TODO: ligar no seu init de vídeo (SDL 1.2) do FNF
+│   ├── xenon_audio.c/.h     # TODO: ligar na saída de áudio do libxenon
+│   ├── xenon_input.c/.h     # TODO: ligar no usb_init()/usb_do_poll() que você já tem
+│   └── rom_loader.c/.h      # TODO: trocar pelo seu carregador de arquivo via USB
+└── core/
+    └── stella2014-libretro/ # <- clone o repo aqui (instruções abaixo)
 ```
 
-## Build — from scratch
-
-Documenting everything that was needed here, since no single piece was ready to go out of the box:
-
-### 1. Toolchain (devkitxenon)
+## Passo 1 — confirmar que o compilador funciona
 
 ```bash
-git clone https://github.com/Free60Project/libxenon ~/libxenon
-cd ~/libxenon/toolchain
-bash build-xenon-toolchain toolchain
-bash build-xenon-toolchain libxenon
-bash build-xenon-toolchain filesystems   # fat-xenon (libfat), ext2fs-xenon, xtaflib
+bash check-toolchain.sh
 ```
 
-```bash
-export DEVKITXENON=/usr/local/xenon
-export PATH=$DEVKITXENON/bin:$PATH
-```
+Isso varre o sistema procurando um `*-gcc` com prefixo powerpc/xenon/ppc,
+testa `--version`, `-dumpmachine`, e tenta compilar um `hello.c` mínimo.
+No fim ele sugere valores prováveis pra `CROSS` e `DEVKITXENON`.
 
-### 2. SDL (libSDLXenon)
+Se ele não achar nada, o toolchain provavelmente precisa ser
+reconstruído — antes de mexer nisso, me manda a saída completa do
+script que a gente vê o que falta.
 
-```bash
-git clone https://github.com/lantus/libSDLXenon ~/libxenon/libSDLXenon
-cd ~/libxenon/libSDLXenon
-```
-
-Needs a one-line patch before it builds — the current libxenon SDK renamed the controller struct's `select` field to `back`:
-
-```bash
-sed -i 's/curpad\.select/curpad.back/' src/joystick/xenon/SDL_xenonjoystick.c
-make -f Makefile.xenon install
-```
-
-### 3. Core (stella2014-libretro)
+## Passo 2 — buscar o core
 
 ```bash
 git clone https://github.com/libretro/stella2014-libretro core/stella2014-libretro
 ```
 
-Needs a patch to disable directory support in `libretro-common` — this toolchain's `newlib` never implemented `opendir`/`readdir` (`dirent.h` even has a deliberate `#error` in it). See [`patches/fix_libxenon_vfs.py`](patches/fix_libxenon_vfs.py) — it adds an `#elif defined(__LIBXENON__)` branch at 9 points in `libretro-common/vfs/vfs_implementation.c`, making the directory functions always report "unsupported" (this doesn't affect ROM loading, which goes through our own `rom_loader.c` instead).
+Depois copie o `libretro.h` da raiz desse repo pra dentro dele mesmo
+se ele não estiver lá (algumas versões trazem em `libretro-common/include/`):
 
 ```bash
-python3 patches/fix_libxenon_vfs.py core/stella2014-libretro/libretro-common/vfs/vfs_implementation.c
+find core/stella2014-libretro -name libretro.h
 ```
 
-### 4. Final build
+O `src/libretro_shim.h` inclui esse header — o Makefile já aponta
+`-Icore/stella2014-libretro` nos includes.
+
+## Passo 3 — ajustar o Makefile
+
+Edite o topo do `Makefile` (ou passe na linha de comando):
 
 ```bash
-make DEVKITXENON=/usr/local/xenon CROSS=xenon-
+make CROSS=powerpc-elf- DEVKITXENON=$HOME/xenon/devkitxenon
 ```
 
-Produces `build/xenon2600.elf32`. Copy it to USB/network and load it from XeLL. Put a ROM named `rom.a26` in the root of the same drive.
+Os valores exatos de `CROSS` e `DEVKITXENON` são os que o
+`check-toolchain.sh` sugerir. Se você tiver um Makefile funcionando do
+FNF demake, copie de lá os `EXTRA_CFLAGS`/`EXTRA_LDFLAGS` (includes do
+libxenon, `-T linkscript.lds`, `-lxenon`, etc.) — não inventei esses
+valores porque dependem exatamente de como seu SDK está instalado.
 
-## Audio architecture
+```bash
+make
+```
 
-The core outputs audio at a fixed 31400Hz, but `xenon_sound_submit` requires a fixed 48000Hz — so `xenon_audio.c` resamples using an integer fixed-point accumulator (48000/31400 reduces exactly to 240/157) and byte-swaps each sample (the sound driver expects little-endian PCM; PowerPC is big-endian).
+## O que já está pronto vs. o que falta
 
-That processing runs on a **dedicated secondary hardware thread** (`xenon_run_thread_task`), not on the main thread. This matters: the app's default linker script (`app.lds`) has the main thread's stack and the heap sharing the same unreserved memory region (`heap_end` and `__libc_stack_end` are the same address), with no fixed stack size and no protection against the two colliding. Since the main thread is already fairly deep in Stella's C++ call chain by the time `retro_run()` reaches our audio callback, anything added there risked silent stack/heap corruption — which is exactly what caused repeated `Exception vector (0x700)` crashes during development. Moving the work to its own thread with its own dedicated stack (mirroring the pattern in [emu_kidid/mupen64-360](https://github.com/emu-kidid/mupen64-360)'s `xenos_audio/audio.c`) fixed it.
+**Pronto (esqueleto funcional):**
+- Estrutura de build com detecção de erros claros (toolchain ausente, core ausente)
+- Todas as callbacks obrigatórias da API libretro (`environment`,
+  `video_refresh`, `audio_sample_batch`, `input_poll`, `input_state`)
+  já ligadas no `main.c`
+- Loop principal chamando `retro_run()`
 
-## Known issues / TODO
+**Falta você conectar (todos marcados com `TODO` no código):**
+- `xenon_video.c` — inicialização real de SDL 1.2 / framebuffer e o
+  blit de fato (converter RGB565 → o que sua surface usa)
+- `xenon_audio.c` — saída de áudio do libxenon
+- `xenon_input.c` — mapear `usb_do_poll()` pros IDs de botão do libretro
+- `rom_loader.c` — sua busca real de arquivo `.a26` na USB
 
-- No on-screen ROM selection — loads a fixed `rom.a26`.
-- No save states.
-- `SDL_UpdateRect` (partial screen update) triggers an `Exception vector` on this SDL port — only a full `SDL_Flip` works. Not fully root-caused (suspected: an unimplemented driver hook in this specific SDL port).
-- Writing files (`fopen` in `"w"` mode) also triggers an `Exception vector` — write support in this `libfat` build appears untested/broken in this environment. Reading works fine.
-- `xenon_make_it_faster()` (raises CPU clock speed, wakes secondary hardware threads) hasn't been enabled — it internally claims all secondary threads (including the one used for audio) via `xenon_set_single_thread_mode()`, so it needs to run *before* `xenon_audio_init()` claims its thread, or it will deadlock. Untested.
+Isso é essencialmente o mesmo trabalho de "colar" que você já fez no
+port do Lua e no FNF demake — só que agora ligando nos pontos de
+entrada que o *core* espera, em vez de escrever a lógica de emulação
+você mesmo.
 
-## Credits
+## Dúvidas conhecidas / pontos de atenção
 
-- [Free60 Project](https://free60.org/) / [libxenon](https://github.com/Free60Project/libxenon) — the bare-metal Xbox 360 toolchain and SDK
-- [lantus/libSDLXenon](https://github.com/lantus/libSDLXenon) — the SDL 1.2 port
-- [Stella](https://stella-emu.github.io/) and [libretro/stella2014-libretro](https://github.com/libretro/stella2014-libretro) — the emulation core itself
-- [emu_kidid/mupen64-360](https://github.com/emu-kidid/mupen64-360) — the reference for running audio on a dedicated hardware thread, which fixed our crash
-
-Built by David2dev-svg and Lbarroso with development assistance from Claude (Anthropic).
-
-## License
-
-The `stella2014-libretro` core is licensed under GPLv2 (inherited from Stella). Since this project includes and links that code, it should also be distributed under GPLv2 — check the exact terms in Stella's `LICENSE` before publishing; this isn't legal advice.
+- `stella2014-libretro` é majoritariamente `.cxx`; o Makefile já busca
+  esse padrão. Se o repo tiver algum `.cpp` solto, adicione uma regra
+  extra no Makefile.
+- `RETRO_PIXEL_FORMAT` — confirme em runtime qual formato o core está
+  pedindo via `shim_environment_cb` (adicione um `printf` lá dentro
+  temporariamente) antes de assumir RGB565.
+- Sem `dlopen` nem SO dinâmico: tudo isso é linkado estático num único
+  `.elf`, então símbolos duplicados entre core e libxenon (ex: se
+  ambos definirem `malloc`/`memcpy` de formas incompatíveis) são o tipo
+  de erro mais provável de aparecer primeiro no link.
